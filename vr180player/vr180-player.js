@@ -17,6 +17,7 @@ const CONTROL_PANEL_HIDE_DELAY = 3000; // 3 seconds
 
 let isXrLoopActive = false;
 let is2DMode = false;
+let isFlat3D = true; // Default to Flat 3D (Cinema Mode)
 let vrControlPanel;
 
 // 2D Camera Controls
@@ -109,93 +110,108 @@ function createPlayButton() {
 	const playButton = document.createElement('button');
 	playButton.id = 'playBtn';
 	playButton.setAttribute('aria-label', 'Play video');
-	
+
 	const playImg = document.createElement('img');
 	playImg.src = 'vr180player/images/play.png';
 	playImg.alt = 'Play';
-	
+
 	playButton.appendChild(playImg);
-	
+
 	return playButton;
 }
 
 function create2DControlPanel() {
 	const panel = document.createElement('div');
 	panel.id = 'panel';
-	
+
 	// Status section
 	const status = document.createElement('div');
 	status.id = 'status';
-	
+
 	const videoTitle = document.createElement('p');
 	videoTitle.id = 'video-title';
 	videoTitle.textContent = 'Title';
-	
+
 	const progress = document.createElement('div');
 	progress.id = 'progress';
-	
+
 	const currentTime = document.createElement('p');
 	currentTime.id = 'current-time';
 	currentTime.textContent = '00:00:00';
-	
+
 	const bar = document.createElement('div');
 	bar.id = 'bar';
-	
+
 	const played = document.createElement('div');
 	played.id = 'played';
 	bar.appendChild(played);
-	
+
 	const totalTime = document.createElement('p');
 	totalTime.id = 'total-time';
 	totalTime.textContent = '00:00:00';
-	
+
 	progress.appendChild(currentTime);
 	progress.appendChild(bar);
 	progress.appendChild(totalTime);
-	
+
 	status.appendChild(videoTitle);
 	status.appendChild(progress);
-	
+
+	// Switch View Button (Text Mode)
+	const switchViewBtn = document.createElement('button');
+	switchViewBtn.id = 'switch-view';
+	switchViewBtn.textContent = '3D Cinema';
+	switchViewBtn.style.marginLeft = '10px';
+	switchViewBtn.style.padding = '5px 10px';
+	switchViewBtn.style.fontSize = '12px';
+	switchViewBtn.style.backgroundColor = 'rgba(255,255,255,0.2)';
+	switchViewBtn.style.border = '1px solid rgba(255,255,255,0.5)';
+	switchViewBtn.style.borderRadius = '4px';
+	switchViewBtn.style.color = 'white';
+	switchViewBtn.style.cursor = 'pointer';
+
+	status.appendChild(switchViewBtn);
+
 	// Controls section
 	const controls = document.createElement('div');
 	controls.id = 'controls';
-	
+
 	const fullscreenBtn = document.createElement('button');
 	fullscreenBtn.id = 'fullscreen';
-	
+
 	const nav = document.createElement('div');
 	nav.id = 'nav';
-	
+
 	const backBtn = document.createElement('button');
 	backBtn.id = 'back';
-	
+
 	const play2Btn = document.createElement('button');
 	play2Btn.id = 'play2';
-	
+
 	const forwardBtn = document.createElement('button');
 	forwardBtn.id = 'forward';
-	
+
 	nav.appendChild(backBtn);
 	nav.appendChild(play2Btn);
 	nav.appendChild(forwardBtn);
-	
+
 	const muteBtn = document.createElement('button');
 	muteBtn.id = 'mute';
-	
+
 	controls.appendChild(fullscreenBtn);
 	controls.appendChild(nav);
 	controls.appendChild(muteBtn);
-	
+
 	// Assemble panel
 	panel.appendChild(status);
 	panel.appendChild(controls);
-	
+
 	return panel;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
 	videoElement = document.getElementById('vr180');
-	
+
 	if (!videoElement) {
 		console.error("CRITICAL_ERROR_DOM: Essential HTML element (video) not found.");
 		return;
@@ -217,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	container.appendChild(controlPanel);
 
 	playBtn.disabled = true;
-	
+
 	if (videoElement) {
 		videoElement.load();
 	}
@@ -399,19 +415,43 @@ function init() {
 			thetaLength
 		);
 		sphereGeometry.scale(-1, 1, 1);
-		sphereMaterial = new THREE.MeshBasicMaterial({ map: null });
-		vr180Mesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
-		vr180Mesh.name = "vr180Mesh";
-		uiElements.push(vr180Mesh);
 
-		vr180Mesh.rotation.y = Math.PI / 2;
+		// Create PlaneGeometry for Flat 3D (Cinema Mode)
+		// Aspect ratio assumption 16:9. Width 16m, Height 9m, placed 10m away?
+		// Let's try Width 20m for a large immersive screen.
+		// 16:9 ratio -> 20m width / 11.25m height.
+		const planeWidth = 20;
+		const planeHeight = planeWidth * (9 / 16);
+		const planeGeometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+
+		sphereMaterial = new THREE.MeshBasicMaterial({ map: null });
+
+		// Initialize with Flat 3D (Plane) by default
+		vr180Mesh = new THREE.Mesh(isFlat3D ? planeGeometry : sphereGeometry, sphereMaterial);
+		vr180Mesh.name = "vr180Mesh";
+
+		// Set position for Flat 3D default
+		if (isFlat3D) {
+			vr180Mesh.position.set(0, 1.6, -15); // Place screen 15m in front
+			vr180Mesh.rotation.y = 0; // Face forward
+		} else {
+			vr180Mesh.rotation.y = Math.PI / 2; // VR180 needs rotation
+		}
+
+		uiElements.push(vr180Mesh);
 		scene.add(vr180Mesh);
 		vr180Mesh.visible = false;
+
+		// Store geometries for toggling
+		vr180Mesh.userData = {
+			sphereGeometry: sphereGeometry,
+			planeGeometry: planeGeometry
+		};
 
 		vr180Mesh.onBeforeRender = function (renderer, scene, activeCamera, geometry, material, group) {
 			if (!material.map) return;
 			const isPresentingXR = renderer.xr.isPresenting;
-			
+
 			// Handle 2D mode - show only left eye view
 			if (is2DMode && !isPresentingXR) {
 				material.map.offset.x = 0;
@@ -420,7 +460,7 @@ function init() {
 				material.map.repeat.y = 1;
 				return;
 			}
-			
+
 			// Default to full texture for non-VR, non-2D mode
 			material.map.offset.x = 0; material.map.repeat.x = 1;
 			material.map.offset.y = 0; material.map.repeat.y = 1;
@@ -649,17 +689,17 @@ function init() {
 		window.addEventListener('resize', onWindowResize);
 
 		if (video) {
-		video.onloadedmetadata = () => {
-			if (isFinite(video.duration) && playBtn) {
-				// Enable button for both VR and non-VR scenarios when video is ready
-				playBtn.disabled = false;
-			}
-			updateSeekBarAppearance();
-			updateVRPlayPauseButtonIcon();
-			updateVRVolumeButtonIcon();
-			update2DControlPanel();
-			update2DMuteButton();
-		};
+			video.onloadedmetadata = () => {
+				if (isFinite(video.duration) && playBtn) {
+					// Enable button for both VR and non-VR scenarios when video is ready
+					playBtn.disabled = false;
+				}
+				updateSeekBarAppearance();
+				updateVRPlayPauseButtonIcon();
+				updateVRVolumeButtonIcon();
+				update2DControlPanel();
+				update2DMuteButton();
+			};
 			video.oncanplaythrough = () => {
 				if (playBtn && video.readyState >= video.HAVE_FUTURE_DATA) {
 					// Enable button for both VR and non-VR scenarios when video is ready to play
@@ -690,9 +730,15 @@ function init() {
 			video.addEventListener('volumechange', updateVRVolumeButtonIcon);
 			video.addEventListener('volumechange', update2DMuteButton);
 		}
-		
+
 		// Initialize 2D control panel
 		init2DControlPanel();
+
+		// Initialize Switch View Button Logic
+		const switchViewBtn = document.getElementById('switch-view');
+		if (switchViewBtn) {
+			switchViewBtn.addEventListener('click', toggleProjectionMode);
+		}
 	} catch (e) {
 		console.error("INIT_ERROR (Phase 3 - Event Listeners):", e);
 	}
@@ -801,6 +847,27 @@ function animatePanelFade(timestamp) {
 	if (isPanelFading) requestAnimationFrame(animatePanelFade);
 }
 
+function toggleProjectionMode() {
+	isFlat3D = !isFlat3D;
+	const switchViewBtn = document.getElementById('switch-view');
+
+	if (isFlat3D) {
+		// Switch to Flat 3D (Plane)
+		vr180Mesh.geometry = vr180Mesh.userData.planeGeometry;
+		vr180Mesh.position.set(0, 1.6, -15);
+		vr180Mesh.rotation.y = 0;
+		if (switchViewBtn) switchViewBtn.textContent = '3D Cinema';
+		console.log("Switched to Flat 3D (Cinema) Mode");
+	} else {
+		// Switch to VR180 (Sphere)
+		vr180Mesh.geometry = vr180Mesh.userData.sphereGeometry;
+		vr180Mesh.position.set(0, 0, 0);
+		vr180Mesh.rotation.y = Math.PI / 2;
+		if (switchViewBtn) switchViewBtn.textContent = 'VR180';
+		console.log("Switched to VR180 Mode");
+	}
+}
+
 function showPanel() {
 	if (vrControlPanel) vrControlPanel.visible = true;
 	clearTimeout(panelHideTimeout);
@@ -830,32 +897,32 @@ function hidePanel() {
 function onWindowResize() {
 	if (!renderer) return;
 	if (renderer.xr && renderer.xr.isPresenting) return;
-	
+
 	if (is2DMode) {
 		// In 2D mode, calculate canvas size based on container dimensions
 		const container = document.getElementById('vr-container');
 		if (container) {
 			const containerRect = container.getBoundingClientRect();
 			const containerWidth = containerRect.width;
-			
+
 			// Calculate height based on 16:9 aspect ratio
 			const aspectRatio = 16 / 9;
 			const calculatedHeight = containerWidth / aspectRatio;
-			
+
 			// Ensure minimum dimensions to prevent zero-sized canvas
 			const canvasWidth = Math.max(containerWidth, 320);
 			const canvasHeight = Math.max(calculatedHeight, 180);
-			
+
 			renderer.setSize(canvasWidth, canvasHeight);
 			camera2D.aspect = canvasWidth / canvasHeight;
 			camera2D.updateProjectionMatrix();
-			
+
 			// Update canvas styling to maintain proper positioning
 			const canvas = renderer.domElement;
 			canvas.style.width = '100%';
 			canvas.style.height = 'auto';
 			canvas.style.aspectRatio = '16/9';
-			
+
 			// Reposition control panel after resize
 			position2DControlPanel();
 		}
@@ -870,7 +937,7 @@ function onWindowResize() {
 			camera.updateProjectionMatrix();
 			renderer.setSize(window.innerWidth, window.innerHeight);
 		}
-		
+
 		// Update 2D camera aspect ratio for potential future use
 		if (camera2D) {
 			camera2D.aspect = window.innerWidth / window.innerHeight;
@@ -882,25 +949,25 @@ function onWindowResize() {
 // 2D Camera Control Functions
 function updateCameraRotation() {
 	if (!camera2D) return;
-	
+
 	// Apply momentum
 	cameraRotation.yaw += cameraVelocity.yaw;
 	cameraRotation.pitch += cameraVelocity.pitch;
-	
+
 	// Constrain pitch (vertical rotation)
 	cameraRotation.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, cameraRotation.pitch));
-	
+
 	// Constrain yaw (horizontal rotation) to VR180 content boundaries
 	cameraRotation.yaw = Math.max(-MAX_YAW, Math.min(MAX_YAW, cameraRotation.yaw));
-	
+
 	// Apply damping to velocity
 	cameraVelocity.yaw *= MOMENTUM_DAMPING;
 	cameraVelocity.pitch *= MOMENTUM_DAMPING;
-	
+
 	// Stop very small velocities
 	if (Math.abs(cameraVelocity.yaw) < 0.001) cameraVelocity.yaw = 0;
 	if (Math.abs(cameraVelocity.pitch) < 0.001) cameraVelocity.pitch = 0;
-	
+
 	// Apply rotation to camera
 	camera2D.rotation.set(cameraRotation.pitch, cameraRotation.yaw, 0);
 }
@@ -913,20 +980,20 @@ function onMouseDown(event) {
 	lastMouseY = event.clientY;
 	cameraVelocity.yaw = 0;
 	cameraVelocity.pitch = 0;
-	
+
 	// Hide controls when dragging starts
 	hide2DControlPanel();
 }
 
 function onMouseMove(event) {
 	if (!is2DMode || !isDragging) return;
-	
+
 	const deltaX = event.clientX - lastMouseX;
 	const deltaY = event.clientY - lastMouseY;
-	
+
 	cameraVelocity.yaw = deltaX * MOUSE_SENSITIVITY;
 	cameraVelocity.pitch = deltaY * MOUSE_SENSITIVITY;
-	
+
 	lastMouseX = event.clientX;
 	lastMouseY = event.clientY;
 }
@@ -934,7 +1001,7 @@ function onMouseMove(event) {
 function onMouseUp(event) {
 	if (!is2DMode) return;
 	isDragging = false;
-	
+
 	// Show controls when dragging ends
 	show2DControlPanel();
 }
@@ -949,7 +1016,7 @@ function onTouchStart(event) {
 		lastTouchY = event.touches[0].clientY;
 		cameraVelocity.yaw = 0;
 		cameraVelocity.pitch = 0;
-		
+
 		// Hide controls when dragging starts
 		hide2DControlPanel();
 	}
@@ -958,14 +1025,14 @@ function onTouchStart(event) {
 function onTouchMove(event) {
 	if (!is2DMode || !isDragging) return;
 	event.preventDefault();
-	
+
 	if (event.touches.length === 1) {
 		const deltaX = event.touches[0].clientX - lastTouchX;
 		const deltaY = event.touches[0].clientY - lastTouchY;
-		
+
 		cameraVelocity.yaw = deltaX * TOUCH_SENSITIVITY;
 		cameraVelocity.pitch = deltaY * TOUCH_SENSITIVITY;
-		
+
 		lastTouchX = event.touches[0].clientX;
 		lastTouchY = event.touches[0].clientY;
 	}
@@ -975,7 +1042,7 @@ function onTouchEnd(event) {
 	if (!is2DMode) return;
 	event.preventDefault();
 	isDragging = false;
-	
+
 	// Show controls when dragging ends
 	show2DControlPanel();
 }
@@ -983,13 +1050,13 @@ function onTouchEnd(event) {
 // 2D Render Loop
 function render2D() {
 	if (!is2DMode) return;
-	
+
 	updateCameraRotation();
-	
+
 	if (renderer && camera2D && scene) {
 		renderer.render(scene, camera2D);
 	}
-	
+
 	requestAnimationFrame(render2D);
 }
 
@@ -1015,9 +1082,9 @@ function init2DControlPanel() {
 
 	// Set initial video title
 	if (videoTitle && video) {
-		const title = video.getAttribute('title') || 
-					  video.querySelector('source')?.src.split('/').pop()?.split('.')[0].replace(/-/g, ' ') || 
-					  "Demo Video";
+		const title = video.getAttribute('title') ||
+			video.querySelector('source')?.src.split('/').pop()?.split('.')[0].replace(/-/g, ' ') ||
+			"Demo Video";
 		videoTitle.textContent = title;
 	}
 
@@ -1025,7 +1092,7 @@ function init2DControlPanel() {
 	if (fullscreenBtn) {
 		fullscreenBtn.addEventListener('click', toggle2DFullscreen);
 	}
-	
+
 	if (backBtn) {
 		backBtn.addEventListener('click', () => {
 			if (video) {
@@ -1034,14 +1101,14 @@ function init2DControlPanel() {
 			show2DControlPanel();
 		});
 	}
-	
+
 	if (play2Btn) {
 		play2Btn.addEventListener('click', () => {
 			togglePlayPause();
 			show2DControlPanel();
 		});
 	}
-	
+
 	if (forwardBtn) {
 		forwardBtn.addEventListener('click', () => {
 			if (video && isFinite(video.duration)) {
@@ -1050,7 +1117,7 @@ function init2DControlPanel() {
 			show2DControlPanel();
 		});
 	}
-	
+
 	if (muteBtn) {
 		muteBtn.addEventListener('click', () => {
 			if (video) {
@@ -1059,7 +1126,7 @@ function init2DControlPanel() {
 			show2DControlPanel();
 		});
 	}
-	
+
 	if (progressBar) {
 		progressBar.addEventListener('click', (e) => {
 			if (video && isFinite(video.duration)) {
@@ -1078,17 +1145,17 @@ function init2DControlPanel() {
 
 function show2DControlPanel() {
 	if (!is2DMode || !controlPanel) return;
-	
+
 	clearTimeout(controlPanelTimeout);
 	controlPanel.classList.add('visible');
 	isControlPanelVisible = true;
-	
+
 	controlPanelTimeout = setTimeout(hide2DControlPanel, CONTROL_PANEL_HIDE_DELAY);
 }
 
 function hide2DControlPanel() {
 	if (!controlPanel) return;
-	
+
 	clearTimeout(controlPanelTimeout);
 	controlPanel.classList.remove('visible');
 	isControlPanelVisible = false;
@@ -1114,16 +1181,16 @@ function on2DTouchStart() {
 
 function update2DControlPanel() {
 	if (!is2DMode || !video) return;
-	
+
 	// Update time displays
 	if (currentTimeDisplay) {
 		currentTimeDisplay.textContent = formatTime(video.currentTime);
 	}
-	
+
 	if (totalTimeDisplay && isFinite(video.duration)) {
 		totalTimeDisplay.textContent = formatTime(video.duration);
 	}
-	
+
 	// Update progress bar
 	if (playedBar && isFinite(video.duration) && video.duration > 0) {
 		const progress = (video.currentTime / video.duration) * 100;
@@ -1133,7 +1200,7 @@ function update2DControlPanel() {
 
 function update2DPlayPauseButton() {
 	if (!is2DMode || !play2Btn || !video) return;
-	
+
 	if (video.paused || video.ended) {
 		play2Btn.classList.remove('playing');
 		play2Btn.classList.add('paused');
@@ -1145,7 +1212,7 @@ function update2DPlayPauseButton() {
 
 function update2DMuteButton() {
 	if (!is2DMode || !muteBtn || !video) return;
-	
+
 	if (video.muted) {
 		// Video is muted, show unmute icon (user can click to unmute)
 		muteBtn.classList.remove('muted');
@@ -1178,10 +1245,10 @@ function toggle2DFullscreen() {
 
 function handle2DVideoEnd() {
 	if (!is2DMode || !video) return;
-	
+
 	// Keep video at last frame (don't reset currentTime)
 	// Video is already paused by onVideoEnded()
-	
+
 	// Show control panel and keep it visible (no auto-hide timeout)
 	if (controlPanel) {
 		clearTimeout(controlPanelTimeout);
@@ -1189,28 +1256,28 @@ function handle2DVideoEnd() {
 		isControlPanelVisible = true;
 		// Don't set timeout - panel stays visible until user interacts
 	}
-	
+
 	// Update play button to show replay state
 	update2DPlayPauseButton();
 }
 
 function position2DControlPanel() {
 	if (!is2DMode || !controlPanel || !renderer) return;
-	
+
 	// Get the canvas dimensions and position
 	const canvas = renderer.domElement;
 	const canvasRect = canvas.getBoundingClientRect();
 	const containerRect = document.getElementById('vr-container').getBoundingClientRect();
-	
+
 	// Calculate 10% from the bottom of the canvas
 	const bottomOffset = canvasRect.height * 0.1;
-	
+
 	// Get the panel's height
 	const panelHeight = controlPanel.offsetHeight;
-	
+
 	// Calculate the top position: canvas bottom minus offset minus panel height, relative to container
 	const topPosition = (canvasRect.bottom - containerRect.top) - bottomOffset - panelHeight;
-	
+
 	// Position the panel so its bottom edge is 10% from canvas bottom
 	controlPanel.style.position = 'absolute';
 	controlPanel.style.top = `${topPosition}px`;
@@ -1222,11 +1289,11 @@ function position2DControlPanel() {
 
 function formatTime(seconds) {
 	if (!isFinite(seconds)) return '00:00:00';
-	
+
 	const hours = Math.floor(seconds / 3600);
 	const minutes = Math.floor((seconds % 3600) / 60);
 	const secs = Math.floor(seconds % 60);
-	
+
 	if (hours > 0) {
 		return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 	} else {
@@ -1253,7 +1320,7 @@ function togglePlayPause() {
 		if (video.ended && is2DMode) {
 			video.currentTime = 0;
 		}
-		
+
 		if (video.readyState >= video.HAVE_ENOUGH_DATA || video.currentSrc) {
 			const playPromise = video.play();
 			if (playPromise !== undefined) {
@@ -1278,30 +1345,30 @@ function resetToOriginalState() {
 		video.pause();
 		video.currentTime = 0;
 		video.controls = false; // Disable native controls
-		
+
 		// Force video back to poster state by reloading
 		video.load();
 	}
-	
+
 	// Show the play button in center position
 	if (playBtn) {
 		playBtn.classList.remove('hidden');
 		playBtn.disabled = false;
 	}
-	
+
 	// Reset 2D mode if it was active
 	if (is2DMode) {
 		is2DMode = false;
 		remove2DEventListeners();
-		
+
 		// Hide 2D control panel
 		hide2DControlPanel();
-		
+
 		// Reset camera rotation
 		cameraRotation = { yaw: 0, pitch: 0 };
 		cameraVelocity = { yaw: 0, pitch: 0 };
 		isDragging = false;
-		
+
 		// Hide WebGL canvas and show video element
 		if (renderer && renderer.domElement) {
 			renderer.domElement.style.display = 'none';
@@ -1309,7 +1376,7 @@ function resetToOriginalState() {
 		if (video) {
 			video.style.display = '';
 		}
-		
+
 		// Reset renderer size
 		onWindowResize();
 	}
@@ -1317,19 +1384,19 @@ function resetToOriginalState() {
 
 function onVideoEnded() {
 	if (video && !video.paused) video.pause();
-	
+
 	if (xrSession && renderer && renderer.xr.isPresenting) {
 		// VR mode - exit VR and reset to original state
 		actualSessionToggle().catch(err => {
 			console.error("Error during automatic VR exit on video end:", err);
 			// Fallback cleanup if actualSessionToggle fails or doesn't fully clean up
-			if(xrSession) { // Check if session still exists
+			if (xrSession) { // Check if session still exists
 				const sessionToClean = xrSession;
 				xrSession = null; // Nullify global ref
 				sessionToClean.removeEventListener('end', onVRSessionEnd);
-				sessionToClean.end().catch(e => {}).finally(() => onVRSessionEnd({session: sessionToClean}));
+				sessionToClean.end().catch(e => { }).finally(() => onVRSessionEnd({ session: sessionToClean }));
 			} else {
-				 onVRSessionEnd({session: null}); // Call with null session if already gone
+				onVRSessionEnd({ session: null }); // Call with null session if already gone
 			}
 		});
 	} else if (is2DMode) {
@@ -1389,10 +1456,10 @@ async function handleEnterVRButtonClick() {
 		console.error("Video element not found for VR button click.");
 		return;
 	}
-	
+
 	// Hide the play button after click
 	hidePlayButton();
-	
+
 	// Check if VR is supported
 	if (playBtn.dataset.xrSupported === "true") {
 		// VR is supported - use VR functionality
@@ -1408,75 +1475,75 @@ function start2DMode() {
 		console.error("Required components not available for 2D mode");
 		return;
 	}
-	
+
 	// Set 2D mode flag
 	is2DMode = true;
-	
+
 	// Calculate canvas size based on container dimensions (same logic as onWindowResize)
 	const container = document.getElementById('vr-container');
 	if (container) {
 		const containerRect = container.getBoundingClientRect();
 		const containerWidth = containerRect.width;
-		
+
 		// Calculate height based on 16:9 aspect ratio
 		const aspectRatio = 16 / 9;
 		const calculatedHeight = containerWidth / aspectRatio;
-		
+
 		// Ensure minimum dimensions to prevent zero-sized canvas
 		const canvasWidth = Math.max(containerWidth, 320);
 		const canvasHeight = Math.max(calculatedHeight, 180);
-		
+
 		// Resize renderer with calculated dimensions
 		renderer.setSize(canvasWidth, canvasHeight);
-		
+
 		// Update 2D camera aspect ratio
 		camera2D.aspect = canvasWidth / canvasHeight;
 		camera2D.updateProjectionMatrix();
 	}
-	
+
 	// Position the canvas to match the video element
 	const canvas = renderer.domElement;
 	canvas.style.position = 'relative';
 	canvas.style.width = '100%';
 	canvas.style.height = 'auto';
 	canvas.style.aspectRatio = '16/9';
-	
+
 	// Hide HTML video element and show WebGL canvas
 	video.style.display = 'none';
 	canvas.style.display = '';
-	
+
 	// Create video texture if not exists
 	if (videoTexture) videoTexture.dispose();
 	videoTexture = new THREE.VideoTexture(video);
 	videoTexture.minFilter = THREE.LinearFilter;
 	videoTexture.magFilter = THREE.LinearFilter;
 	videoTexture.colorSpace = THREE.SRGBColorSpace;
-	
+
 	// Apply texture to sphere material and make mesh visible
 	if (sphereMaterial && vr180Mesh) {
 		sphereMaterial.map = videoTexture;
 		sphereMaterial.needsUpdate = true;
 		vr180Mesh.visible = true;
 	}
-	
+
 	// Start video playback
 	togglePlayPause();
-	
+
 	// Add event listeners for 2D controls
 	add2DEventListeners();
-	
+
 	// Add fullscreen event listeners to handle resize properly
 	document.addEventListener('fullscreenchange', onFullscreenChange);
 	document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 	document.addEventListener('mozfullscreenchange', onFullscreenChange);
 	document.addEventListener('MSFullscreenChange', onFullscreenChange);
-	
+
 	// Show 2D control panel
 	show2DControlPanel();
-	
+
 	// Position control panel relative to canvas
 	position2DControlPanel();
-	
+
 	// Start 2D render loop
 	render2D();
 }
@@ -1486,10 +1553,10 @@ function add2DEventListeners() {
 	renderer.domElement.addEventListener('mousedown', onMouseDown);
 	renderer.domElement.addEventListener('mousemove', onMouseMove);
 	renderer.domElement.addEventListener('mouseup', onMouseUp);
-	
+
 	// Canvas-specific mouse movement for showing controls
 	renderer.domElement.addEventListener('mousemove', onCanvasMouseMove);
-	
+
 	// Touch events
 	renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
 	renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -1501,12 +1568,12 @@ function remove2DEventListeners() {
 	renderer.domElement.removeEventListener('mousedown', onMouseDown);
 	renderer.domElement.removeEventListener('mousemove', onMouseMove);
 	renderer.domElement.removeEventListener('mouseup', onMouseUp);
-	
+
 	// Touch events
 	renderer.domElement.removeEventListener('touchstart', onTouchStart);
 	renderer.domElement.removeEventListener('touchmove', onTouchMove);
 	renderer.domElement.removeEventListener('touchend', onTouchEnd);
-	
+
 	// Fullscreen events
 	document.removeEventListener('fullscreenchange', onFullscreenChange);
 	document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
@@ -1516,7 +1583,7 @@ function remove2DEventListeners() {
 
 function onFullscreenChange() {
 	if (!is2DMode) return;
-	
+
 	// Trigger resize handling when fullscreen state changes
 	setTimeout(() => {
 		onWindowResize();
@@ -1536,7 +1603,7 @@ async function actualSessionToggle() {
 		if (vrControlPanel) {
 			clearTimeout(panelHideTimeout);
 			panelTargetOpacity = 0;
-			panelOpacity = 0; 
+			panelOpacity = 0;
 			vrControlPanel.children.forEach(child => {
 				if (child.material && child.material.hasOwnProperty('opacity')) {
 					child.material.opacity = 0;
@@ -1556,8 +1623,8 @@ async function actualSessionToggle() {
 			});
 			if (!session) { throw new Error("requestSession returned no session."); }
 
-			xrSession = session; 
-			xrSession.addEventListener('end', onVRSessionEnd); 
+			xrSession = session;
+			xrSession.addEventListener('end', onVRSessionEnd);
 
 
 			// Hide the regular video element when entering VR
@@ -1620,15 +1687,15 @@ async function actualSessionToggle() {
 				vrControlPanel.visible = false; panelOpacity = 0; panelTargetOpacity = 0; isPanelFading = false;
 				clearTimeout(panelHideTimeout);
 			}
-			if (xrSession) { 
+			if (xrSession) {
 				xrSession.removeEventListener('end', onVRSessionEnd);
 				const tempSession = xrSession;
-				xrSession = null; 
-				tempSession.end().catch(e => {}).finally(() => {
-					onVRSessionEnd({session: tempSession});
+				xrSession = null;
+				tempSession.end().catch(e => { }).finally(() => {
+					onVRSessionEnd({ session: tempSession });
 				});
 			} else {
-				 onVRSessionEnd({session: null});
+				onVRSessionEnd({ session: null });
 			}
 			if (renderer && renderer.getAnimationLoop && renderer.getAnimationLoop()) {
 				renderer.setAnimationLoop(null);
@@ -1637,8 +1704,8 @@ async function actualSessionToggle() {
 	}
 }
 
-function onVRSessionEnd(event) { 
-	const endedSession = event.session; 
+function onVRSessionEnd(event) {
+	const endedSession = event.session;
 
 	isXrLoopActive = false;
 	if (renderer) {
@@ -1737,10 +1804,10 @@ function renderXR(timestamp, frame) {
 		const renderErrorMsg = "ERROR_IN_RENDERXR_LOOP (F" + frameCounter + "): " + (error.message || String(error));
 		console.error(renderErrorMsg, error);
 		console.error("Render loop error. Attempting to exit VR.");
-		isXrLoopActive = false; 
+		isXrLoopActive = false;
 
-		const sessionToCloseOnError = xrSession; 
-		xrSession = null; 
+		const sessionToCloseOnError = xrSession;
+		xrSession = null;
 
 		if (sessionToCloseOnError) {
 			sessionToCloseOnError.removeEventListener('end', onVRSessionEnd);
@@ -1750,7 +1817,7 @@ function renderXR(timestamp, frame) {
 				onVRSessionEnd({ session: sessionToCloseOnError });
 			});
 		} else {
-			onVRSessionEnd({ session: null }); 
+			onVRSessionEnd({ session: null });
 		}
 	}
 }
