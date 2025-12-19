@@ -242,10 +242,28 @@ document.addEventListener('DOMContentLoaded', () => {
 				hls.loadSource(videoSrc);
 				hls.attachMedia(videoElement);
 				hls.on(Hls.Events.MANIFEST_PARSED, function () {
-					// videoElement.play(); // Don't auto-play, wait for user
+					// Enable button when HLS manifest is loaded
+					if (playBtn) playBtn.disabled = false;
+					console.log("HLS Manifest Parsed, Play Button Enabled");
 				});
 				hls.on(Hls.Events.ERROR, function (event, data) {
 					console.error("HLS Error:", data);
+					if (data.fatal) {
+						switch (data.type) {
+							case Hls.ErrorTypes.NETWORK_ERROR:
+								console.log("fatal network error encountered, try to recover");
+								hls.startLoad();
+								break;
+							case Hls.ErrorTypes.MEDIA_ERROR:
+								console.log("fatal media error encountered, try to recover");
+								hls.recoverMediaError();
+								break;
+							default:
+								// cannot recover
+								hls.destroy();
+								break;
+						}
+					}
 				});
 			} else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
 				// Native HLS support (Safari)
@@ -1347,7 +1365,14 @@ function togglePlayPause() {
 					if (is2DMode && video.ended === false) {
 						show2DControlPanel();
 					}
-				}).catch(err => console.error("Error during video.play():", err));
+				}).catch(err => {
+					console.error("Error during video.play():", err);
+					// If playback fails, show the play button again so user can retry
+					if (playBtn) {
+						playBtn.classList.remove('hidden');
+						playBtn.disabled = false;
+					}
+				});
 			} else {
 				console.error("video.play() did not return a promise.");
 			}
