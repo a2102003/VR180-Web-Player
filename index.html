@@ -1,33 +1,40 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 	<title>VR180 Web Player</title>
 	<link rel="stylesheet" href="vr180player/vr180-player.css">
 	<style>
-        body {
-		  font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-		  font-size: 1rem;
-		  font-weight: normal;
+		body {
+			font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+			font-size: 1rem;
+			font-weight: normal;
 		}
+
 		main {
 			max-width: 750px;
 			margin: auto;
 		}
 	</style>
-	</head>
+	<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+
 <body>
 	<main>
 		<h1>VR180 Web Player</h1>
 		<p>This is a web-based player for 180° stereoscopic video.</p>
 		<div id="vr-container">
 			<video id="vr180" poster="poster.jpg" title="Demo Video" crossOrigin="anonymous" playsinline>
-				<source src="https://ik.imagekit.io/0ovbtmin9/video_20251203_175207_edit.mp4?updatedAt=1765117130833" type="video/mp4">
+				<source
+					src="https://dkbgsf747pwjw.cloudfront.net/web-video-convert-output/自然风光/水箱金鱼_SV_20250610_055539sbs-1080.m3u8"
+					type="application/x-mpegURL">
 			</video>
 			<!-- UI elements will be dynamically inserted here by JavaScript -->
 		</div>
 	</main>
 	<script type="module" src="vr180player/vr180-player.js"></script>
 </body>
+
 </html>

@@ -235,7 +235,25 @@ document.addEventListener('DOMContentLoaded', () => {
 	playBtn.disabled = true;
 
 	if (videoElement) {
-		videoElement.load();
+		const videoSrc = videoElement.querySelector('source')?.src;
+		if (videoSrc && (videoSrc.includes('.m3u8') || videoElement.canPlayType('application/vnd.apple.mpegurl'))) {
+			if (Hls.isSupported()) {
+				const hls = new Hls();
+				hls.loadSource(videoSrc);
+				hls.attachMedia(videoElement);
+				hls.on(Hls.Events.MANIFEST_PARSED, function () {
+					// videoElement.play(); // Don't auto-play, wait for user
+				});
+				hls.on(Hls.Events.ERROR, function (event, data) {
+					console.error("HLS Error:", data);
+				});
+			} else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+				// Native HLS support (Safari)
+				videoElement.src = videoSrc;
+			}
+		} else {
+			videoElement.load();
+		}
 	}
 
 	if (navigator.xr) {
